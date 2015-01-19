@@ -23,8 +23,12 @@ use GuzzleHttp\Subscriber\Progress\Progress;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\ArgvInput;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Input\StrignInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Filesystem\Filesystem;
 
 /**
@@ -61,17 +65,17 @@ class NewCommand extends Command
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
-    {
+    {        
         $this->fs = new Filesystem();
         $directory = rtrim(trim($input->getArgument('directory')), DIRECTORY_SEPARATOR);
+        $directory = $directory === '.' ? getcwd() : $directory;
         $this->projectDir = $this->fs->isAbsolutePath($directory) ? $directory : getcwd().DIRECTORY_SEPARATOR.$directory;
         $this->projectName = basename($directory);
         $this->version = trim($input->getArgument('version'));
         $this->output = $output;
-
         try {
             $this
-                ->checkProjectName()
+                ->checkProjectName($input, $output)
                 ->checkSymfonyVersionIsInstallable()
                 ->download()
                 ->extract()
@@ -95,17 +99,25 @@ class NewCommand extends Command
      *
      * @throws \RuntimeException if a project with the same does already exist
      */
-    private function checkProjectName()
-    {
+    private function checkProjectName($input, $output)
+    {   
+        #: make sure if composer.json exists in destination path?   
         if (is_dir($this->projectDir)) {
-            throw new \RuntimeException(sprintf(
-                "There is already a '%s' project in this directory (%s).\n".
-                "Change your project name or create it in another directory.",
-                $this->projectName, $this->projectDir
-            ));
+            $messageConfirm = sprintf('"%s" already exists in "%s"' . PHP_EOL 
+                . 'Installing a project into an existing directory may replace files ' . PHP_EOL
+                . 'Continue with this action? [y/n]' . PHP_EOL, 
+                $this->projectName, dirname($this->projectDir)
+            );            
+            $helper   = $this->getHelper('question');
+            $question = new ConfirmationQuestion($messageConfirm, false); 
+
+            if (!$helper->ask($input, $output, $question)) {
+                print('Action canceled!');
+                exit(0);
+            }             
         }
 
-        return $this;
+        return $this;        
     }
 
     /**
